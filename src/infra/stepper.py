@@ -1,7 +1,9 @@
 # Created by Patrick Kao
+import time
 
 import cv2
 import numpy as np
+from tinkerforge.brick_silent_stepper import SilentStepper
 from tinkerforge.bricklet_thermal_imaging import BrickletThermalImaging
 from tinkerforge.ip_connection import IPConnection
 
@@ -17,8 +19,7 @@ STEPS_PER_ROT = 360 / STEP_DEGREES
 
 def setup_devices():
     ipcon = IPConnection()  # Create IP connection
-    stepper = None
-    # stepper = SilentStepper(STEPPER_UID, ipcon)  # Create device object
+    stepper = SilentStepper(STEPPER_UID, ipcon)  # Create device object
 
     # ir
     ti = BrickletThermalImaging(IR_UID, ipcon)  # Create device object
@@ -30,14 +31,14 @@ def setup_devices():
     ti.set_resolution(BrickletThermalImaging.RESOLUTION_0_TO_655_KELVIN)
     # Don't use device before ipcon is connected
 
-    # stepper.set_motor_current(800)  # 800 mA
-    # stepper.set_step_configuration(stepper.STEP_RESOLUTION_1, True)  # 1/8 steps (interpolated)
-    # stepper.set_max_velocity(2000)  # Velocity 2000 steps/s
-    #
-    # # Slow acceleration (500 steps/s^2),
-    # # Fast deacceleration (5000 steps/s^2)
-    # stepper.set_speed_ramping(500, 5000)
-    # stepper.enable()
+    stepper.set_motor_current(800)  # 800 mA
+    stepper.set_step_configuration(stepper.STEP_RESOLUTION_1, True)  # 1/8 steps (interpolated)
+    stepper.set_max_velocity(2000)  # Velocity 2000 steps/s
+
+    # Slow acceleration (500 steps/s^2),
+    # Fast deacceleration (5000 steps/s^2)
+    stepper.set_speed_ramping(500, 5000)
+    stepper.enable()
     return stepper, ti
 
 
@@ -50,12 +51,24 @@ def unmasked_present(image):
     bounds = detect(image)
     unmasked_faces = []
     masked_faces = []
+    max_width = -999
+    max_height = -999
+
     for box in bounds:
-        if box[0]==True:
+        if box[0] == False:
             unmasked_faces.append(box[1:])
         else:
             masked_faces.append(box[1:])
-    return len(unmasked_faces) > 0
+
+    for box in unmasked_faces:
+        max_width = max(max_width, box[2] - box[0])
+        max_height = max(box[3] - box[1], max_height)
+
+    face_close = False
+    if max_width > 140 and max_height > 180:
+        face_close = True
+
+    return len(unmasked_faces) > 0, face_close
 
 
 def to_f(bin):
@@ -66,7 +79,7 @@ def to_f(bin):
 
 def control_flow():
     stepper, ti = setup_devices()
-    cap = cv2.VideoCapture(0)
+    cap = cv2.VideoCapture(1)
     try:
         while True:
 
@@ -79,16 +92,25 @@ def control_flow():
             ret, frame = cap.read()
             # frame dim: height, width, channels
 
-            risk = unmasked_present(frame)
+            risk, close = unmasked_present(frame)
 
-            if risk:
+            if risk and close:
                 dispense_mask(stepper)
     finally:
-        # stepper.stop()
-        # time.sleep(0.4)
-        # stepper.disable()
+        stepper.stop()
+        time.sleep(0.4)
+        stepper.disable()
         pass
 
 
+def test_video():
+    cap = cv2.VideoCapture(1)
+    while True:
+        ret, frame = cap.read()
+        risk, close = unmasked_present(frame)
+        print(f"Risk present: {risk}\nRisk close: {close}")
+
+
 if __name__ == "__main__":
-    control_flow()
+    # control_flow()
+    test_video()

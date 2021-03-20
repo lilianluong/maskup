@@ -1,11 +1,11 @@
 # Created by Patrick Kao
-import time
 
-from tinkerforge.brick_silent_stepper import SilentStepper
+import cv2
+import numpy as np
 from tinkerforge.bricklet_thermal_imaging import BrickletThermalImaging
 from tinkerforge.ip_connection import IPConnection
-import numpy as np
-import cv2
+
+from src.cv.mask_detection import detect
 
 HOST = "localhost"
 PORT = 4223
@@ -27,7 +27,7 @@ def setup_devices():
 
     # setup ir
     ti.set_image_transfer_config(ti.IMAGE_TRANSFER_MANUAL_TEMPERATURE_IMAGE)
-    ti.set_resolution(BrickletThermalImaging.RESOLUTION_0_TO_655_KELVIN )
+    ti.set_resolution(BrickletThermalImaging.RESOLUTION_0_TO_655_KELVIN)
     # Don't use device before ipcon is connected
 
     # stepper.set_motor_current(800)  # 800 mA
@@ -46,33 +46,48 @@ def dispense_mask(stepper):
     stepper.set_steps(NUM_STEPS)
 
 
-def unmasked_present():
-    return False
+def unmasked_present(image):
+    bounds = detect(image)
+    unmasked_faces = []
+    masked_faces = []
+    for box in bounds:
+        if box[0]==True:
+            unmasked_faces.append(box[1:])
+        else:
+            masked_faces.append(box[1:])
+    return len(unmasked_faces) > 0
+
 
 def to_f(bin):
-    deg_off = bin/100
-    deg_celsius = deg_off-273.15
-    return deg_celsius*9/5+32
+    deg_off = bin / 100
+    deg_celsius = deg_off - 273.15
+    return deg_celsius * 9 / 5 + 32
+
 
 def control_flow():
     stepper, ti = setup_devices()
+    cap = cv2.VideoCapture(0)
     try:
         while True:
-            risk = unmasked_present()  # could be server code
 
             temp = ti.get_temperature_image()
             temp = np.array(temp)
             temp = to_f(temp)
             max_temp = np.max(temp)
 
+            # Capture frame-by-frame
+            ret, frame = cap.read()
+            # frame dim: height, width, channels
 
+            risk = unmasked_present(frame)
 
             if risk:
                 dispense_mask(stepper)
     finally:
-        stepper.stop()
-        time.sleep(0.4)
-        stepper.disable()
+        # stepper.stop()
+        # time.sleep(0.4)
+        # stepper.disable()
+        pass
 
 
 if __name__ == "__main__":

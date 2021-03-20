@@ -3,8 +3,8 @@ import cv2
 import argparse
 import numpy as np
 
-CONFIG = "cfg/yolov3.cfg"
-WEIGHTS = "data/yolov3_6000.weights"
+CONFIG = "../cv/cfg/yolov3.cfg"
+WEIGHTS = "../cv/data/yolov3_6000.weights"
 CLASSES = ["face", "face_mask"]
 
 net = cv2.dnn.readNet(WEIGHTS, CONFIG)

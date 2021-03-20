@@ -1,5 +1,3 @@
-
-
 import time
 import cv2
 import argparse
@@ -26,6 +24,7 @@ def detect(image):
     Output: List of tuples (masked, x, y, x+w, y+h)
         masked is a boolean and coordinates are integers
     """
+    t0 = time.time()
     width = image.shape[1]
     height = image.shape[0]
     scale = 0.00392
@@ -37,9 +36,12 @@ def detect(image):
 
     outs = net.forward(get_output_layers(net))
 
-    output = []
+    class_ids = []
+    confidences = []
+    boxes = []
+    output_tuples = []
     conf_threshold = 0.5
-
+    nms_threshold = 0.4
     for out in outs:
         for detection in out:
             scores = detection[5:]
@@ -52,5 +54,11 @@ def detect(image):
                 h = int(detection[3] * height)
                 x = center_x - w / 2
                 y = center_y - h / 2
-                output.append((bool(class_id), x, y, x + w, y + h))
+                class_ids.append(class_id)
+                confidences.append(float(confidence))
+                boxes.append([x, y, w, h])
+                output_tuples.append((bool(class_id), x, y, x + w, y + h))
+
+    indices = cv2.dnn.NMSBoxes(boxes, confidences, conf_threshold, nms_threshold)
+    output = [output_tuples[i[0]] for i in indices]
     return output

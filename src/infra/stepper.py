@@ -1,4 +1,5 @@
 # Created by Patrick Kao
+import datetime
 import time
 
 import cv2
@@ -6,6 +7,7 @@ import numpy as np
 from tinkerforge.brick_silent_stepper import SilentStepper
 from tinkerforge.bricklet_thermal_imaging import BrickletThermalImaging
 from tinkerforge.ip_connection import IPConnection
+from twilio.rest import Client
 
 from src.cv.mask_detection import detect
 
@@ -15,6 +17,7 @@ STEPPER_UID = "6Sbx9V"  # Change XXYYZZ to the UID of your Stepper Brick
 IR_UID = "Nb9"
 STEP_DEGREES = 1.8
 STEPS_PER_ROT = 360 / STEP_DEGREES
+TEXT_FREQ = datetime.timedelta(0, 60)
 
 
 def setup_devices():
@@ -80,6 +83,11 @@ def to_f(bin):
 def control_flow():
     stepper, ti = setup_devices()
     cap = cv2.VideoCapture(1)
+    cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+    client = Client("AC46e4ac967021aac04155bc42bbd2cb8a",
+                    "876df1548202229c46da2032a0a8bee1")
+
+    last_text_time = datetime.datetime.fromordinal(1)
     try:
         while True:
 
@@ -88,14 +96,33 @@ def control_flow():
             temp = to_f(temp)
             max_temp = np.max(temp)
 
+            print(max_temp)
+
+            if max_temp > 100 and datetime.datetime.now() - last_text_time > TEXT_FREQ:
+                warn_str = f"Your temperature is too high! We measured {int(max_temp)} degrees " \
+                           f"fahrenheit"
+                client.messages.create(to="+16508344535",
+                                       from_="+14153199415",
+                                       body=warn_str)
+                print(warn_str)
+                last_text_time = datetime.datetime.now()
+
             # Capture frame-by-frame
             ret, frame = cap.read()
+
             # frame dim: height, width, channels
 
             risk, close = unmasked_present(frame)
 
-            if risk and close:
+            # print(f"Risk present: {risk}\nRisk close: {close}")
+
+            # if risk and close:
+            if risk:
                 dispense_mask(stepper)
+                time.sleep(10)
+                for _ in range(10):
+                    ret, frame = cap.read()
+
     finally:
         stepper.stop()
         time.sleep(0.4)
@@ -105,12 +132,16 @@ def control_flow():
 
 def test_video():
     cap = cv2.VideoCapture(1)
+    cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
     while True:
         ret, frame = cap.read()
+        cv2.imshow("pic", frame)
         risk, close = unmasked_present(frame)
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            break
         print(f"Risk present: {risk}\nRisk close: {close}")
 
 
 if __name__ == "__main__":
-    # control_flow()
-    test_video()
+    control_flow()
+    # test_video()
